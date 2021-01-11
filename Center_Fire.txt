@@ -1,0 +1,92 @@
+import time
+import threading
+import cv2
+import numpy as np
+import sys
+from gpiozero import Robot, DistanceSensor, OutputDevice
+from time import sleep
+
+posX = 0
+posY = 1700
+hsvVal = [5,25,44,255,228,255]
+
+def fire_capture():
+    frameWidth = 240
+    frameHeight = 160
+    video = cv2.VideoCapture(0)
+    video.set(3, frameWidth)
+    video.set(4, frameHeight)
+    while True:
+        (grabbed, frame) = video.read()
+        if not grabbed:
+            break
+
+        blur = cv2.GaussianBlur(frame, (21, 21), 0)
+        hsv = cv2.cvtColor(blur, cv2.COLOR_BGR2HSV)
+
+        lower = [5, 44, 228]
+        upper = [25, 255, 255]
+        lower = np.array(lower, dtype="uint8")
+        upper = np.array(upper, dtype="uint8")
+
+        mask = cv2.inRange(hsv, lower, upper)
+
+        conts,h=cv2.findContours(mask.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+        for contoura in conts:
+            
+            peri = cv2.arcLength(contoura, True)
+            approx = cv2.approxPolyDP(contoura, 0.02 * peri, True)
+            #print(len(approx))
+            
+            
+            area = cv2.contourArea(contoura)
+            if(area > 500):
+                x,y,w,h = cv2.boundingRect(contoura)
+                
+                c = max(conts, key=cv2.contourArea)
+                #(x, y), radius) = cv2.minEnclosingCircle(c)
+                M = cv2.moments(c)
+                center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+                cv2.circle(frame, center, 3, (0, 0, 255), -1)
+                
+                
+                cv2.rectangle(frame, (x,y),(x+w,y+h),(0,0,255),2)
+                cv2.putText(frame, 'Fire', (x+w, y), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (36,255,12), 2)
+                cv2.line(frame, (87, 71), center,(0,0,255),2)
+                diff_x = center[0]-87
+                diff_y = center[1]-71
+                print((center[0]-87), (center[1]-71))
+
+        #output = cv2.bitwise_and(frame, hsv, mask=mask)
+        #no_red = cv2.countNonZero(mask)
+        #cv2.imshow("output", output)
+
+        cv2.imshow("Detection", frame)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+
+    cv2.destroyAllWindows()
+    video.release()
+
+
+def setup():
+    robot = Robot(left = (27, 17), right = (23, 22))
+    sensor = DistanceSensor(trigger=18, echo=24)
+    relay = OutputDevice(25, active_high=True, initial_value=False)
+
+
+			
+def destroy():
+    relay.off()
+    robot.stop()
+    cv2.destroyAllWindows()
+    video.release()
+
+
+if __name__ == '__main__':
+	setup()
+	try:
+            fire_capture()
+
+	except KeyboardInterrupt:
+            destroy()
